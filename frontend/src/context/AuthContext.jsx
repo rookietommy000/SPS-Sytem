@@ -4,9 +4,7 @@ import { api } from '../api/client'
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const DEV_USER = import.meta.env.DEV
-    ? { id: 'dev-user', username: 'admin', fullName: '開發模式', role: { name: 'admin' } }
-    : null
+  const DEV_USER = { id: 'dev-user', username: 'admin', fullName: '開發模式', role: { name: 'admin' } }
 
   const [user, setUser] = useState(() => {
     if (DEV_USER) return DEV_USER
