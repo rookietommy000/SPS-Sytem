@@ -1,0 +1,33 @@
+# 環境變數（含機密資訊，絕不進 git）
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# 編譯產物
+dist/
+build/
+.next/
+
+# Prisma
+backend/prisma/migrations/*/migration.sql.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes（本機資料，不需同步）
+postgres_data/
+
+# 上傳檔案暫存
+uploads/

@@ -1,0 +1,25 @@
+version: '3.9'
+
+# 生產環境覆蓋設定
+# 啟動：docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# 需先建立 .env.production 並填入生產環境設定
+
+services:
+  postgres:
+    env_file: .env.production
+    restart: always
+    ports: []             # 生產環境不對外開放 DB port
+
+  backend:
+    env_file: .env.production
+    restart: always
+    volumes: []           # 關閉原始碼掛載，使用 image 內的打包版本
+    environment:
+      NODE_ENV: production
+
+  frontend:
+    env_file: .env.production
+    restart: always
+    volumes: []
+    environment:
+      NODE_ENV: production

@@ -1,0 +1,440 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// 使用者與權限
+// ============================================================
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(50)
+  description String?  @db.VarChar(200)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id         String   @id @default(uuid())
+  employeeNo String?  @unique @map("employee_no") @db.VarChar(30)
+  username   String   @unique @db.VarChar(100)
+  email      String?  @unique @db.VarChar(200)
+  password   String   @db.VarChar(255)
+  fullName   String   @map("full_name") @db.VarChar(100)
+  roleId     Int      @map("role_id")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  role                  Role                @relation(fields: [roleId], references: [id])
+  createdParts          Part[]              @relation("CreatedParts")
+  requestedPurchases    PurchaseRequest[]   @relation("RequestedBy")
+  approvedPurchases     PurchaseRequest[]   @relation("ApprovedBy")
+  createdPurchaseOrders PurchaseOrder[]
+  createdCounts         InventoryCount[]    @relation("CreatedBy")
+  closedCounts          InventoryCount[]    @relation("ClosedBy")
+  stockTransactions     StockTransaction[]
+  activityLogs          ActivityLog[]
+
+  @@map("users")
+}
+
+// ============================================================
+// 產線 & 設備
+// ============================================================
+
+model ProductionLine {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique @db.VarChar(20)   // 例：2.1、3.2
+  name      String?  @db.VarChar(100)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  equipment Equipment[]
+
+  @@map("production_lines")
+}
+
+model Equipment {
+  id               Int      @id @default(autoincrement())
+  productionLineId Int      @map("production_line_id")
+  code             String   @db.VarChar(30)    // 例：DTS002
+  name             String?  @db.VarChar(100)
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  productionLine  ProductionLine   @relation(fields: [productionLineId], references: [id])
+  inventory       Inventory[]
+  transactions    StockTransaction[]
+  counts          InventoryCount[]
+  countItems      InventoryCountItem[]
+
+  @@unique([productionLineId, code])
+  @@index([productionLineId])
+  @@map("equipment")
+}
+
+// ============================================================
+// 備品分類（類別：電控元件、機構件…）
+// ============================================================
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  parentId  Int?     @map("parent_id")
+  code      String   @unique @db.VarChar(30)
+  name      String   @db.VarChar(100)          // 電控元件、機構件…
+  level     Int      @default(1) @db.SmallInt
+  sortOrder Int      @default(0) @map("sort_order") @db.SmallInt
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children Category[] @relation("CategoryTree")
+  parts    Part[]
+
+  @@map("categories")
+}
+
+// ============================================================
+// 備品主資料
+// 欄位對應畫面：
+//   part_no              → 部品編號
+//   manufacturer_part_no → 原廠部品採購編號
+//   internal_part_no     → 國光備品編號
+//   name                 → 品名
+//   spec_description     → 規格描述
+//   brand                → 廠牌
+//   model_no             → 型號
+//   category             → 類別
+//   unit                 → 單位
+//   is_substitutable     → 可替代性
+//   shared_equipment     → 共用性
+//   quotation_ref        → 報價單
+//   min_stock            → 最低庫存量
+// ============================================================
+
+model Part {
+  id                  String   @id @default(uuid())
+  // 三種編號
+  partNo              String?  @unique @map("part_no") @db.VarChar(50)
+  manufacturerPartNo  String?  @map("manufacturer_part_no") @db.VarChar(100)
+  internalPartNo      String?  @unique @map("internal_part_no") @db.VarChar(50)
+  // 基本資料
+  name                String   @db.VarChar(200)
+  specDescription     String?  @map("spec_description")
+  categoryId          Int?     @map("category_id")
+  brand               String?  @db.VarChar(100)
+  modelNo             String?  @map("model_no") @db.VarChar(100)
+  unit                String   @default("個") @db.VarChar(20)
+  // 可替代性 & 共用性
+  isSubstitutable     Boolean  @default(false) @map("is_substitutable")
+  substituteNote      String?  @map("substitute_note")
+  sharedEquipment     String?  @map("shared_equipment")
+  // 庫存控管
+  minStock            Int      @default(0) @map("min_stock")
+  // 採購參考
+  quotationRef        String?  @map("quotation_ref") @db.VarChar(100)
+  // 其他
+  isActive            Boolean  @default(true) @map("is_active")
+  createdBy           String?  @map("created_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  category             Category?            @relation(fields: [categoryId], references: [id])
+  creator              User?                @relation("CreatedParts", fields: [createdBy], references: [id])
+  partSuppliers        PartSupplier[]
+  inventory            Inventory[]
+  stockTransactions    StockTransaction[]
+  purchaseRequestItems PurchaseRequestItem[]
+  purchaseOrderItems   PurchaseOrderItem[]
+  countItems           InventoryCountItem[]
+
+  @@index([partNo])
+  @@index([internalPartNo])
+  @@index([manufacturerPartNo])
+  @@index([categoryId])
+  @@map("parts")
+}
+
+// ============================================================
+// 供應商
+// ============================================================
+
+model Supplier {
+  id           String   @id @default(uuid())
+  code         String   @unique @db.VarChar(30)
+  name         String   @db.VarChar(200)
+  supplierType String?  @map("supplier_type") @db.VarChar(50)  // 單點、台灣、國際
+  contact      String?  @db.VarChar(100)
+  phone        String?  @db.VarChar(50)
+  email        String?  @db.VarChar(200)
+  address      String?
+  taxId        String?  @map("tax_id") @db.VarChar(30)
+  paymentTerms String?  @map("payment_terms") @db.VarChar(200)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  partSuppliers  PartSupplier[]
+  purchaseOrders PurchaseOrder[]
+
+  @@map("suppliers")
+}
+
+model PartSupplier {
+  partId         String   @map("part_id")
+  supplierId     String   @map("supplier_id")
+  supplierPartNo String?  @map("supplier_part_no") @db.VarChar(100)
+  unitPrice      Decimal? @map("unit_price") @db.Decimal(12, 2)
+  currency       String   @default("TWD") @db.VarChar(10)
+  isPreferred    Boolean  @default(false) @map("is_preferred")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  part     Part     @relation(fields: [partId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@id([partId, supplierId])
+  @@map("part_suppliers")
+}
+
+// ============================================================
+// 庫存（每備品 × 每設備 一筆）
+// ============================================================
+
+model Inventory {
+  id          BigInt   @id @default(autoincrement())
+  partId      String   @map("part_id")
+  equipmentId Int      @map("equipment_id")
+  location    String?  @db.VarChar(20)   // 位置代碼，例：F1
+  quantity    Int      @default(0)
+  minStock    Int      @default(0) @map("min_stock")  // 可覆蓋備品主資料的最低庫存
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  part      Part      @relation(fields: [partId], references: [id])
+  equipment Equipment @relation(fields: [equipmentId], references: [id])
+
+  @@unique([partId, equipmentId])
+  @@index([partId])
+  @@index([equipmentId])
+  @@map("inventory")
+}
+
+// ============================================================
+// 庫存異動紀錄（進出記錄）
+// 畫面對應：人員/日期欄、領用 +/- 操作
+// ============================================================
+
+enum TransactionType {
+  STOCK_IN      // 入庫
+  STOCK_OUT     // 出庫（領用）
+  RETURN_IN     // 退料入庫
+  ADJUST_PLUS   // 盤盈
+  ADJUST_MINUS  // 盤虧
+
+  @@map("transaction_type")
+}
+
+model StockTransaction {
+  id             BigInt          @id @default(autoincrement())
+  txnNo          String          @unique @map("txn_no") @db.VarChar(30)
+  txnType        TransactionType @map("txn_type")
+  partId         String          @map("part_id")
+  equipmentId    Int             @map("equipment_id")
+  location       String?         @db.VarChar(20)
+  quantity       Int
+  quantityBefore Int             @map("quantity_before")
+  quantityAfter  Int             @map("quantity_after")
+  refType        String?         @map("ref_type") @db.VarChar(50)
+  refId          String?         @map("ref_id") @db.VarChar(50)
+  remark         String?
+  operatedBy     String?         @map("operated_by")   // 人員
+  operatedAt     DateTime        @default(now()) @map("operated_at")  // 日期
+
+  part      Part      @relation(fields: [partId], references: [id])
+  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  operator  User?     @relation(fields: [operatedBy], references: [id])
+
+  @@index([partId])
+  @@index([equipmentId])
+  @@index([txnType])
+  @@index([operatedAt])
+  @@map("stock_transactions")
+}
+
+// ============================================================
+// 採購申請
+// ============================================================
+
+enum RequestStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  ORDERED
+  CANCELLED
+
+  @@map("request_status")
+}
+
+model PurchaseRequest {
+  id           String        @id @default(uuid())
+  requestNo    String        @unique @map("request_no") @db.VarChar(30)
+  status       RequestStatus @default(DRAFT)
+  reason       String?
+  requestedBy  String        @map("requested_by")
+  approvedBy   String?       @map("approved_by")
+  approvedAt   DateTime?     @map("approved_at")
+  rejectReason String?       @map("reject_reason")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  requester User                  @relation("RequestedBy", fields: [requestedBy], references: [id])
+  approver  User?                 @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  items     PurchaseRequestItem[]
+
+  @@map("purchase_requests")
+}
+
+model PurchaseRequestItem {
+  id        BigInt  @id @default(autoincrement())
+  requestId String  @map("request_id")
+  partId    String  @map("part_id")
+  quantity  Int
+  remark    String?
+
+  request PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  part    Part            @relation(fields: [partId], references: [id])
+
+  @@map("purchase_request_items")
+}
+
+// ============================================================
+// 採購單
+// ============================================================
+
+enum PoStatus {
+  DRAFT
+  CONFIRMED
+  PARTIAL
+  COMPLETED
+  CANCELLED
+
+  @@map("po_status")
+}
+
+model PurchaseOrder {
+  id           String    @id @default(uuid())
+  poNo         String    @unique @map("po_no") @db.VarChar(30)
+  supplierId   String    @map("supplier_id")
+  status       PoStatus  @default(DRAFT)
+  orderDate    DateTime? @map("order_date") @db.Date
+  expectedDate DateTime? @map("expected_date") @db.Date
+  totalAmount  Decimal?  @map("total_amount") @db.Decimal(14, 2)
+  currency     String    @default("TWD") @db.VarChar(10)
+  remark       String?
+  createdBy    String    @map("created_by")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  supplier Supplier           @relation(fields: [supplierId], references: [id])
+  creator  User               @relation(fields: [createdBy], references: [id])
+  items    PurchaseOrderItem[]
+
+  @@index([supplierId])
+  @@index([status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id          BigInt   @id @default(autoincrement())
+  poId        String   @map("po_id")
+  partId      String   @map("part_id")
+  quantity    Int
+  receivedQty Int      @default(0) @map("received_qty")
+  unitPrice   Decimal? @map("unit_price") @db.Decimal(12, 2)
+  remark      String?
+
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  part          Part          @relation(fields: [partId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+// ============================================================
+// 盤點
+// ============================================================
+
+enum CountStatus {
+  OPEN
+  CLOSED
+  ADJUSTED
+
+  @@map("count_status")
+}
+
+model InventoryCount {
+  id          String      @id @default(uuid())
+  countNo     String      @unique @map("count_no") @db.VarChar(30)
+  status      CountStatus @default(OPEN)
+  equipmentId Int?        @map("equipment_id")
+  countDate   DateTime    @map("count_date") @db.Date
+  remark      String?
+  createdBy   String      @map("created_by")
+  closedBy    String?     @map("closed_by")
+  closedAt    DateTime?   @map("closed_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  equipment Equipment?           @relation(fields: [equipmentId], references: [id])
+  creator   User                 @relation("CreatedBy", fields: [createdBy], references: [id])
+  closer    User?                @relation("ClosedBy", fields: [closedBy], references: [id])
+  items     InventoryCountItem[]
+
+  @@map("inventory_counts")
+}
+
+model InventoryCountItem {
+  id          BigInt  @id @default(autoincrement())
+  countId     String  @map("count_id")
+  partId      String  @map("part_id")
+  equipmentId Int     @map("equipment_id")
+  location    String? @db.VarChar(20)
+  systemQty   Int     @map("system_qty")
+  countedQty  Int?    @map("counted_qty")
+  remark      String?
+
+  count     InventoryCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  part      Part           @relation(fields: [partId], references: [id])
+  equipment Equipment      @relation(fields: [equipmentId], references: [id])
+
+  @@map("inventory_count_items")
+}
+
+// ============================================================
+// 操作日誌
+// ============================================================
+
+model ActivityLog {
+  id         BigInt   @id @default(autoincrement())
+  userId     String?  @map("user_id")
+  action     String   @db.VarChar(100)
+  entityType String?  @map("entity_type") @db.VarChar(50)
+  entityId   String?  @map("entity_id") @db.VarChar(100)
+  detail     Json?
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
